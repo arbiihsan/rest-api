@@ -186,7 +186,7 @@ error responses template:
 
 ### Deployed API Usage
 #### Check API status
-![plot](./screenshots/screenshot_kube%20resources.png)
+![plot](./screenshots/Screenshot%202025-10-18%20223500.png)
 #### Create User
 ![plot](./screenshots/Screenshot%202025-10-18%20221932.png)
 #### Login
