@@ -1,6 +1,6 @@
 # REST API by Arbi M Ihsan
 
-This is the documentation of my REST API project.
+This is the documentation of my REST API project. Including `screenshots` for some of the process. 
 
 ## Features
 
@@ -71,6 +71,72 @@ npm test
 ```
 locally, this app is accessible at: `http://localhost:3000`
 
+## API Usage Examples (bash)
+
+App is accessible at: http://137.184.251.206
+
+### Create a User
+```bash
+curl -X POST http://137.184.251.206/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Arbi Ihsan",
+    "email": "arbi@example.com",
+    "password": "password123"
+  }'
+```
+
+### Login
+```bash
+curl -X POST http://137.184.251.206/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "arbi@example.com",
+    "password": "password123"
+  }'
+```
+
+Response:
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "...",
+    "name": "Arbi Ihsan",
+    "email": "arbi@example.com",
+    "createdAt": "2025-10-16T..."
+  }
+}
+```
+
+### Get All Users (Private)
+```bash
+curl -X GET http://137.184.251.206/users \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Get User by ID (Private)
+```bash
+curl -X GET http://137.184.251.206/users/:id \
+  -H "Authorization: Bearer JWT_TOKEN"
+```
+
+### Update User
+```bash
+curl -X PUT http://137.184.251.206/users/:id \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Arbi M Ihsan"
+  }'
+```
+
+### Delete User
+```bash
+curl -X DELETE http://137.184.251.206/users/:id
+```
+
 ## CI/CD Pipeline
 
 Github Actions workflow:
@@ -108,6 +174,31 @@ error responses template:
 - `500` - Internal Server Error
 
 ## Screenshots
+
+### Test case passed
+![plot](./screenshots/screenshot_test%20case.png)
+
+### CI/CD pipeline jobs completed
+![plot](./screenshots/screenshot_cicd%20pipeline.png)
+
+### Check all kubernetes resources
+![plot](./screenshots/screenshot_kube%20resources.png)
+
+### Deployed API Usage
+#### Check API status
+![plot](./screenshots/screenshot_kube%20resources.png)
+#### Create User
+![plot](./screenshots/Screenshot%202025-10-18%20221932.png)
+#### Login
+![plot](./screenshots/Screenshot%202025-10-18%20222028.png)
+#### Get all user
+![plot](./screenshots/Screenshot%202025-10-18%20222123.png)
+#### Get user by id
+![plot](./screenshots/Screenshot%202025-10-18%20222236.png)
+#### Update user
+![plot](./screenshots/Screenshot%202025-10-18%20222356.png)
+#### Delete user
+![plot](./screenshots/Screenshot%202025-10-18%20222438.png)
 
 ## Additional Info
 **Created by:** Arbi M Ihsan  
