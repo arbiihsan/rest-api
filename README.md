@@ -107,6 +107,7 @@ error responses template:
 - `409` - Conflict (duplicate email)
 - `500` - Internal Server Error
 
+## Screenshots
 
 ## Additional Info
 **Created by:** Arbi M Ihsan  
