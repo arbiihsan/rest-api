@@ -1,0 +1,172 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKER_USERNAME }}/rest-api
+  K8S_NAMESPACE: default
+  APP_NAME: rest-api
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:6
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/rest-api-test
+          JWT_SECRET: test-secret-key
+          JWT_EXPIRE: 24h
+          NODE_ENV: test
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+
+  build:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: 'latest'
+
+      - name: Configure Kubernetes credentials
+        run: |
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > kubeconfig
+          echo "KUBECONFIG=$(pwd)/kubeconfig" >> $GITHUB_ENV
+
+      - name: Create Kubernetes secrets
+        run: |
+          # Delete existing secret if it exists
+          kubectl delete secret rest-api-secrets -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+          
+          # Create new secret with updated values
+          kubectl create secret generic rest-api-secrets \
+            --from-literal=mongodb-uri="${{ secrets.MONGODB_URI }}" \
+            --from-literal=jwt-secret="${{ secrets.JWT_SECRET }}" \
+            -n ${{ env.K8S_NAMESPACE }}
+
+      - name: Update deployment image
+        run: |
+          # Update the deployment.yaml with the correct Docker image
+          sed -i "s|YOUR_DOCKERHUB_USERNAME/rest-api:latest|${{ env.DOCKER_IMAGE }}:latest|g" k8s/deployment.yaml
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Apply Kubernetes manifests
+          kubectl apply -f k8s/deployment.yaml -n ${{ env.K8S_NAMESPACE }}
+          kubectl apply -f k8s/service.yaml -n ${{ env.K8S_NAMESPACE }}
+          
+          # Wait for rollout to complete
+          kubectl rollout status deployment/${{ env.APP_NAME }} \
+            -n ${{ env.K8S_NAMESPACE }} \
+            --timeout=5m
+
+      - name: Get LoadBalancer IP
+        run: |
+          echo "Waiting for LoadBalancer IP..."
+          kubectl get service rest-api-service -n ${{ env.K8S_NAMESPACE }}
+          
+          # Wait for external IP (max 2 minutes)
+          for i in {1..24}; do
+            EXTERNAL_IP=$(kubectl get service rest-api-service -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+            if [ ! -z "$EXTERNAL_IP" ]; then
+              echo "Application is accessible at: http://$EXTERNAL_IP"
+              break
+            fi
+            echo "Waiting for external IP... ($i/24)"
+            sleep 5
+          done
+
+      - name: Verify deployment
+        run: |
+          echo "=== Deployments ==="
+          kubectl get deployments -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "=== Pods ==="
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          echo ""
+          echo "=== Services ==="
+          kubectl get services -n ${{ env.K8S_NAMESPACE }}
+
+      - name: Cleanup
+        if: always()
+        run: rm -f kubeconfig
